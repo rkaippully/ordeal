@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Ordeal
@@ -6,30 +6,29 @@ module Ordeal
     ) where
 
 import qualified Control.Concurrent.Async as Async
-import qualified Control.Concurrent.MVar as MVar
-import           Control.Concurrent.Chan (newChan, readChan)
-import           Control.Monad (forever, unless, void)
+import           Control.Concurrent.Chan  (newChan, readChan)
+import qualified Control.Concurrent.MVar  as MVar
+import           Control.Monad            (forever, unless, void)
 #if __GLASGOW_HASKELL__ < 710
-import           Data.Monoid (mempty)
+import           Data.Monoid              (mempty)
 #endif
-import           Data.Monoid ((<>))
-import qualified Data.Text as Text
-import qualified Data.Text.IO as TextIO
-import           System.FSNotify (WatchConfig(..), Debounce(..), withManagerConf, defaultConfig, watchTreeChan)
-import           System.Environment (getArgs)
-import           System.Posix.Types (CPid(..))
-import           System.Posix.Signals (Signal, signalProcess, sigINT)
-import           System.Process ( CreateProcess(..)
-                                , StdStream(..)
-                                , CmdSpec(..)
-                                , ProcessHandle
-                                , createProcess)
-import           System.Process.Internals (ProcessHandle__(..), withProcessHandle)
-import           System.IO ( BufferMode(..)
-                           , hSetBuffering
-                           , stdout
-                           , stdin
-                           )
+import           Data.Monoid              ((<>))
+import qualified Data.Text                as Text
+import qualified Data.Text.IO             as TextIO
+import           System.Environment       (getArgs)
+import           System.FSNotify          (Debounce (..), WatchConfig (..),
+                                           defaultConfig, watchTreeChan,
+                                           withManagerConf)
+import           System.IO                (BufferMode (..), hSetBuffering,
+                                           stdin, stdout)
+import           System.Posix.Process     (getProcessGroupIDOf)
+import           System.Posix.Signals     (Signal, sigINT, signalProcessGroup)
+import           System.Posix.Types       (CPid (..))
+import           System.Process           (CmdSpec (..), CreateProcess (..),
+                                           ProcessHandle, StdStream (..),
+                                           createProcess)
+import           System.Process.Internals (ProcessHandle__ (..),
+                                           withProcessHandle)
 
 getPid :: ProcessHandle -> IO (Maybe CPid)
 getPid ph = withProcessHandle ph go
@@ -42,8 +41,8 @@ signalProcessHandle :: ProcessHandle -> Signal -> IO ()
 signalProcessHandle pHandle signal = do
     -- TODO: FIX ME
     Just pid <- getPid pHandle
-    let pId = CPid (fromIntegral pid)
-    signalProcess signal pId
+    pgId <- getProcessGroupIDOf pid
+    signalProcessGroup signal pgId
 
 processSpec :: String -> [String] -> CreateProcess
 processSpec cmd args = CreateProcess {
@@ -54,7 +53,7 @@ processSpec cmd args = CreateProcess {
   , std_out         = CreatePipe
   , std_err         = Inherit
   , close_fds       = False
-  , create_group    = False
+  , create_group    = True
   , delegate_ctlc   = False
 #if MIN_VERSION_process(1,3,0)
   , detach_console     = False
@@ -64,6 +63,9 @@ processSpec cmd args = CreateProcess {
 #if MIN_VERSION_process(1,4,0)
   , child_group     = Nothing
   , child_user      = Nothing
+#endif
+#if MIN_VERSION_process(1,5,0)
+  , use_process_jobs = False
 #endif
   }
 
